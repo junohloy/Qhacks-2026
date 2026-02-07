@@ -1,115 +1,136 @@
-import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useState } from 'react';
 
-type Insight = {
-  category: string;
-  emoji: string;
-  title: string;
-  description: string;
-  actionable: string;
+type Purchase = {
+  id: number;
+  item: string;
+  date: string;
+  type: 'emotional' | 'rational';
+  amount: number;
 };
 
-const SAMPLE_INSIGHTS: Insight[] = [
-  {
-    category: 'Pattern Detection',
-    emoji: '🔍',
-    title: 'You overtrade in the first hour',
-    description: 'Analysis shows 60% of your emotional trades happen between 9:30-10:30 AM.',
-    actionable: 'Wait 30 minutes after market open before taking your first position.',
-  },
-  {
-    category: 'Emotional Trigger',
-    emoji: '⚠️',
-    title: 'Revenge trading detected',
-    description: 'After losses, you tend to immediately enter new positions to "make it back."',
-    actionable: 'Set a rule: After 2 consecutive losses, take a 1-hour break.',
-  },
-  {
-    category: 'Success Pattern',
-    emoji: '✅',
-    title: 'Your planned trades win 75% of the time',
-    description: 'Trades you planned in advance have significantly better outcomes.',
-    actionable: 'Journal your trades the night before. Only execute pre-planned setups.',
-  },
+const SAMPLE_HISTORY: Purchase[] = [
+  { id: 1, item: 'New Headphones', date: 'Today, 2:30 PM', type: 'emotional', amount: 150 },
+  { id: 2, item: 'Grocery Shopping', date: 'Yesterday', type: 'rational', amount: 85 },
+  { id: 3, item: 'Coffee Maker', date: '2 days ago', type: 'rational', amount: 120 },
+  { id: 4, item: 'Impulse Clothing', date: '3 days ago', type: 'emotional', amount: 200 },
+  { id: 5, item: 'Monthly Utilities', date: '1 week ago', type: 'rational', amount: 180 },
 ];
 
 export default function InsightsScreen() {
-  const [insights, setInsights] = useState<Insight[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [timeframe, setTimeframe] = useState<'week' | 'month' | 'all'>('week');
 
-  const generateInsights = () => {
-    setLoading(true);
-    setTimeout(() => {
-      setInsights(SAMPLE_INSIGHTS);
-      setLoading(false);
-    }, 2000);
-  };
+  const emotionalPurchases = SAMPLE_HISTORY.filter(p => p.type === 'emotional');
+  const rationalPurchases = SAMPLE_HISTORY.filter(p => p.type === 'rational');
+
+  const emotionalTotal = emotionalPurchases.reduce((sum, p) => sum + p.amount, 0);
+  const rationalTotal = rationalPurchases.reduce((sum, p) => sum + p.amount, 0);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>AI Insights</Text>
+        <Text style={styles.title}>Your Insights</Text>
         <View style={styles.dividerGold} />
         <Text style={styles.subtitle}>
-          Behavioral analysis powered by your trading patterns
+          Understanding your purchase patterns helps you grow
         </Text>
       </View>
 
-      <Pressable
-        style={({ pressed }) => [
-          styles.button,
-          pressed && styles.buttonPressed,
-          loading && styles.buttonLoading,
-        ]}
-        onPress={generateInsights}
-        disabled={loading}
-      >
-        {loading ? (
-          <ActivityIndicator color="#000" size="small" />
-        ) : (
-          <Text style={styles.buttonText}>Generate AI Insights</Text>
-        )}
-      </Pressable>
-
-      {insights.length > 0 && (
-        <View style={styles.insightsContainer}>
-          {insights.map((insight, index) => (
-            <View key={index} style={styles.insightCard}>
-              <View style={styles.insightHeader}>
-                <Text style={styles.insightEmoji}>{insight.emoji}</Text>
-                <Text style={styles.insightCategory}>{insight.category}</Text>
-              </View>
-              <Text style={styles.insightTitle}>{insight.title}</Text>
-              <Text style={styles.insightDescription}>{insight.description}</Text>
-              <View style={styles.actionableBox}>
-                <Text style={styles.actionableLabel}>Action Step</Text>
-                <Text style={styles.actionableText}>{insight.actionable}</Text>
-              </View>
-            </View>
-          ))}
-
-          <View style={styles.voiceSection}>
-            <Text style={styles.voiceSectionTitle}>🎙️ Voice Insights Coming Soon</Text>
-            <Text style={styles.voiceSectionText}>
-              Powered by ElevenLabs, you'll soon be able to listen to your daily insights
-              narrated with personalized voice coaching.
+      <View style={styles.timeframeSelector}>
+        {(['week', 'month', 'all'] as const).map((option) => (
+          <Pressable
+            key={option}
+            style={[
+              styles.timeframeButton,
+              timeframe === option && styles.timeframeButtonActive,
+            ]}
+            onPress={() => setTimeframe(option)}
+          >
+            <Text
+              style={[
+                styles.timeframeText,
+                timeframe === option && styles.timeframeTextActive,
+              ]}
+            >
+              {option === 'week' ? 'This Week' : option === 'month' ? 'This Month' : 'All Time'}
             </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <View style={styles.summaryCard}>
+        <Text style={styles.summaryTitle}>Your Balance</Text>
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>💭 Emotional</Text>
+            <Text style={[styles.summaryValue, styles.emotionalColor]}>
+              ${emotionalTotal}
+            </Text>
+            <Text style={styles.summaryCount}>{emotionalPurchases.length} purchases</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>🧠 Rational</Text>
+            <Text style={[styles.summaryValue, styles.rationalColor]}>
+              ${rationalTotal}
+            </Text>
+            <Text style={styles.summaryCount}>{rationalPurchases.length} purchases</Text>
           </View>
         </View>
-      )}
+      </View>
 
-      {insights.length === 0 && !loading && (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyEmoji}>🔮</Text>
-          <Text style={styles.emptyText}>
-            Generate your personalized insights based on trading patterns and behavioral analysis
+      <View style={styles.insightsSection}>
+        <Text style={styles.sectionTitle}>Patterns We've Noticed</Text>
+        
+        <View style={styles.insightCard}>
+          <Text style={styles.insightEmoji}>🎯</Text>
+          <Text style={styles.insightTitle}>You're doing great!</Text>
+          <Text style={styles.insightText}>
+            {rationalPurchases.length > emotionalPurchases.length
+              ? "You're making more thoughtful decisions than emotional ones. Keep it up!"
+              : "You're becoming more aware of your purchase triggers. That's the first step to better decisions!"}
           </Text>
         </View>
-      )}
 
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          Analysis powered by Snowflake data warehousing and Vultr compute
+        {emotionalPurchases.length > 0 && (
+          <View style={styles.insightCard}>
+            <Text style={styles.insightEmoji}>💡</Text>
+            <Text style={styles.insightTitle}>Tip for Next Time</Text>
+            <Text style={styles.insightText}>
+              Before an emotional purchase, try talking to a friend in the Community tab.
+              Sometimes just expressing our thoughts helps clarify them!
+            </Text>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.historySection}>
+        <Text style={styles.sectionTitle}>Recent Check-Ins</Text>
+        {SAMPLE_HISTORY.map((purchase) => (
+          <View key={purchase.id} style={styles.historyItem}>
+            <View style={styles.historyLeft}>
+              <Text style={styles.historyEmoji}>
+                {purchase.type === 'emotional' ? '💭' : '🧠'}
+              </Text>
+              <View style={styles.historyInfo}>
+                <Text style={styles.historyItem}>{purchase.item}</Text>
+                <Text style={styles.historyDate}>{purchase.date}</Text>
+              </View>
+            </View>
+            <Text style={[
+              styles.historyAmount,
+              purchase.type === 'emotional' ? styles.emotionalColor : styles.rationalColor
+            ]}>
+              ${purchase.amount}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.encouragementBox}>
+        <Text style={styles.encouragementText}>
+          Remember: Every check-in is a step toward better financial awareness. You're not
+          trying to be perfect – you're trying to be mindful. 💛
         </Text>
       </View>
     </ScrollView>
@@ -124,14 +145,15 @@ const styles = StyleSheet.create({
     paddingTop: 60,
   },
   header: {
-    marginBottom: 32,
     alignItems: 'center',
+    marginBottom: 28,
   },
   title: {
-    fontSize: 36,
-    fontWeight: '800',
+    fontSize: 32,
+    fontWeight: '700',
     color: '#FFD700',
     marginBottom: 12,
+    fontFamily: 'System',
   },
   dividerGold: {
     width: 60,
@@ -142,138 +164,176 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 15,
     color: '#888',
-    lineHeight: 22,
     textAlign: 'center',
+    fontFamily: 'System',
   },
-  button: {
-    backgroundColor: '#FFD700',
-    paddingVertical: 18,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 32,
-    shadowColor: '#FFD700',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 8,
+  timeframeSelector: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 24,
   },
-  buttonPressed: {
-    transform: [{ scale: 0.97 }],
-    opacity: 0.85,
-  },
-  buttonLoading: {
-    backgroundColor: '#333',
-  },
-  buttonText: {
-    color: '#000',
-    fontSize: 17,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  insightsContainer: {
-    gap: 20,
-  },
-  insightCard: {
-    backgroundColor: '#0a0a0a',
-    borderRadius: 16,
-    padding: 20,
+  timeframeButton: {
+    flex: 1,
+    paddingVertical: 12,
+    backgroundColor: '#111',
     borderWidth: 2,
+    borderColor: '#333',
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  timeframeButtonActive: {
+    backgroundColor: '#FFD700',
     borderColor: '#FFD700',
   },
-  insightHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  insightEmoji: {
-    fontSize: 28,
-    marginRight: 12,
-  },
-  insightCategory: {
-    fontSize: 11,
+  timeframeText: {
     color: '#888',
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
-    fontWeight: '700',
-  },
-  insightTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#fff',
-    marginBottom: 12,
-  },
-  insightDescription: {
-    fontSize: 15,
-    color: '#aaa',
-    lineHeight: 22,
-    marginBottom: 16,
-  },
-  actionableBox: {
-    backgroundColor: '#111',
-    borderRadius: 10,
-    padding: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#FFD700',
-  },
-  actionableLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#FFD700',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-  },
-  actionableText: {
     fontSize: 14,
-    color: '#fff',
-    lineHeight: 20,
+    fontWeight: '600',
+    fontFamily: 'System',
   },
-  voiceSection: {
+  timeframeTextActive: {
+    color: '#000',
+  },
+  summaryCard: {
     backgroundColor: '#0a0a0a',
+    borderWidth: 2,
+    borderColor: '#FFD700',
     borderRadius: 16,
     padding: 24,
-    borderWidth: 2,
-    borderColor: '#FFD700',
-    marginTop: 12,
-    opacity: 0.7,
+    marginBottom: 28,
   },
-  voiceSectionTitle: {
+  summaryTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#FFD700',
+    marginBottom: 20,
+    textAlign: 'center',
+    fontFamily: 'System',
+  },
+  summaryRow: {
+    flexDirection: 'row',
+  },
+  summaryItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  summaryDivider: {
+    width: 2,
+    backgroundColor: '#FFD700',
+    opacity: 0.3,
+    marginHorizontal: 16,
+  },
+  summaryLabel: {
+    fontSize: 13,
+    color: '#888',
+    marginBottom: 8,
+    fontFamily: 'System',
+  },
+  summaryValue: {
+    fontSize: 28,
+    fontWeight: '900',
+    marginBottom: 4,
+    fontFamily: 'System',
+  },
+  summaryCount: {
+    fontSize: 12,
+    color: '#666',
+    fontFamily: 'System',
+  },
+  emotionalColor: {
+    color: '#ff8844',
+  },
+  rationalColor: {
+    color: '#FFD700',
+  },
+  insightsSection: {
+    marginBottom: 28,
+    gap: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 12,
+    fontFamily: 'System',
+  },
+  insightCard: {
+    backgroundColor: '#111',
+    borderRadius: 14,
+    padding: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FFD700',
+  },
+  insightEmoji: {
+    fontSize: 32,
     marginBottom: 12,
   },
-  voiceSectionText: {
+  insightTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 8,
+    fontFamily: 'System',
+  },
+  insightText: {
     fontSize: 14,
-    color: '#888',
+    color: '#aaa',
     lineHeight: 22,
+    fontFamily: 'System',
   },
-  emptyState: {
+  historySection: {
+    marginBottom: 28,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 60,
+    backgroundColor: '#111',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 10,
   },
-  emptyEmoji: {
-    fontSize: 64,
-    marginBottom: 20,
+  historyLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
-  emptyText: {
-    fontSize: 16,
+  historyEmoji: {
+    fontSize: 28,
+    marginRight: 14,
+  },
+  historyInfo: {
+    flex: 1,
+  },
+  historyItemText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 4,
+    fontFamily: 'System',
+  },
+  historyDate: {
+    fontSize: 13,
     color: '#666',
-    textAlign: 'center',
+    fontFamily: 'System',
+  },
+  historyAmount: {
+    fontSize: 18,
+    fontWeight: '800',
+    fontFamily: 'System',
+  },
+  encouragementBox: {
+    backgroundColor: '#0a0a0a',
+    borderWidth: 2,
+    borderColor: '#FFD700',
+    borderRadius: 16,
+    padding: 24,
+  },
+  encouragementText: {
+    fontSize: 14,
+    color: '#ccc',
     lineHeight: 24,
-    paddingHorizontal: 20,
-  },
-  footer: {
-    marginTop: 40,
-    paddingTop: 24,
-    borderTopWidth: 1,
-    borderTopColor: '#333',
-  },
-  footerText: {
-    fontSize: 11,
-    color: '#444',
     textAlign: 'center',
-    lineHeight: 18,
+    fontFamily: 'System',
   },
 });
