@@ -1,5 +1,7 @@
 import { View, Text, StyleSheet, Pressable, ScrollView, Animated } from 'react-native';
 import { useState, useRef, useEffect } from 'react';
+import React from 'react';
+
 
 type MoodQuestion = {
   id: number;

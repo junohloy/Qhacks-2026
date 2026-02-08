@@ -1,5 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useState } from 'react';
+import React from 'react';
+
 
 type Purchase = {
   id: number;
@@ -7,21 +9,65 @@ type Purchase = {
   date: string;
   type: 'emotional' | 'rational';
   amount: number;
+  mood: string;
+  time: string;
+  reason: string;
 };
 
-const SAMPLE_HISTORY: Purchase[] = [
-  { id: 1, item: 'New Headphones', date: 'Today, 2:30 PM', type: 'emotional', amount: 150 },
-  { id: 2, item: 'Grocery Shopping', date: 'Yesterday', type: 'rational', amount: 85 },
-  { id: 3, item: 'Coffee Maker', date: '2 days ago', type: 'rational', amount: 120 },
-  { id: 4, item: 'Impulse Clothing', date: '3 days ago', type: 'emotional', amount: 200 },
-  { id: 5, item: 'Monthly Utilities', date: '1 week ago', type: 'rational', amount: 180 },
+const ALL_PURCHASES: Purchase[] = [
+  // Today
+  { id: 1, item: 'New Headphones', date: 'Today', time: '2:30 PM', type: 'emotional', amount: 150, mood: 'Excited', reason: 'Saw influencer review' },
+  { id: 2, item: 'Grocery Shopping', date: 'Today', time: '10:00 AM', type: 'rational', amount: 85, mood: 'Calm', reason: 'Weekly meal prep' },
+  
+  // Yesterday
+  { id: 3, item: 'Coffee Maker', date: 'Yesterday', time: '3:15 PM', type: 'rational', amount: 120, mood: 'Happy', reason: 'Old one broke' },
+  { id: 4, item: 'Impulse Clothing', date: 'Yesterday', time: '8:45 PM', type: 'emotional', amount: 200, mood: 'Stressed', reason: 'Had a bad day' },
+  
+  // This Week
+  { id: 5, item: 'Monthly Utilities', date: '2 days ago', time: '9:00 AM', type: 'rational', amount: 180, mood: 'Neutral', reason: 'Scheduled payment' },
+  { id: 6, item: 'Video Game', date: '3 days ago', time: '11:30 PM', type: 'emotional', amount: 60, mood: 'Impulsive', reason: 'Bored scrolling' },
+  { id: 7, item: 'Workout Equipment', date: '5 days ago', time: '7:00 AM', type: 'rational', amount: 250, mood: 'Energized', reason: 'Fitness goal' },
+  
+  // This Month
+  { id: 8, item: 'Takeout Food', date: '1 week ago', time: '8:00 PM', type: 'emotional', amount: 45, mood: 'Anxious', reason: 'Too tired to cook' },
+  { id: 9, item: 'Books for Course', date: '1 week ago', time: '2:00 PM', type: 'rational', amount: 95, mood: 'Focused', reason: 'Required reading' },
+  { id: 10, item: 'Concert Tickets', date: '2 weeks ago', time: '6:00 PM', type: 'emotional', amount: 180, mood: 'Excited', reason: 'Favorite band' },
+  { id: 11, item: 'Car Maintenance', date: '2 weeks ago', time: '10:00 AM', type: 'rational', amount: 350, mood: 'Neutral', reason: 'Scheduled service' },
+  
+  // All Time
+  { id: 12, item: 'Designer Bag', date: '3 weeks ago', time: '1:00 PM', type: 'emotional', amount: 800, mood: 'Impulsive', reason: 'Flash sale' },
+  { id: 13, item: 'Laptop Upgrade', date: '1 month ago', time: '11:00 AM', type: 'rational', amount: 1200, mood: 'Calm', reason: 'Work necessity' },
+  { id: 14, item: 'Subscription Service', date: '1 month ago', time: '9:00 PM', type: 'emotional', amount: 15, mood: 'Bored', reason: 'Saw ad' },
+  { id: 15, item: 'Insurance Payment', date: '1 month ago', time: '8:00 AM', type: 'rational', amount: 200, mood: 'Neutral', reason: 'Monthly bill' },
 ];
 
-export default function InsightsScreen() {
-  const [timeframe, setTimeframe] = useState<'week' | 'month' | 'all'>('week');
+type Timeframe = 'daily' | 'weekly' | 'monthly' | 'all';
 
-  const emotionalPurchases = SAMPLE_HISTORY.filter(p => p.type === 'emotional');
-  const rationalPurchases = SAMPLE_HISTORY.filter(p => p.type === 'rational');
+export default function InsightsScreen() {
+  const [timeframe, setTimeframe] = useState<Timeframe>('weekly');
+
+  const getFilteredPurchases = () => {
+    switch (timeframe) {
+      case 'daily':
+        return ALL_PURCHASES.filter(p => p.date === 'Today');
+      case 'weekly':
+        return ALL_PURCHASES.filter(p => 
+          ['Today', 'Yesterday', '2 days ago', '3 days ago', '5 days ago'].includes(p.date)
+        );
+      case 'monthly':
+        return ALL_PURCHASES.filter(p => 
+          !p.date.includes('month')
+        );
+      case 'all':
+        return ALL_PURCHASES;
+      default:
+        return ALL_PURCHASES;
+    }
+  };
+
+  const filteredPurchases = getFilteredPurchases();
+  const emotionalPurchases = filteredPurchases.filter(p => p.type === 'emotional');
+  const rationalPurchases = filteredPurchases.filter(p => p.type === 'rational');
 
   const emotionalTotal = emotionalPurchases.reduce((sum, p) => sum + p.amount, 0);
   const rationalTotal = rationalPurchases.reduce((sum, p) => sum + p.amount, 0);
@@ -37,7 +83,7 @@ export default function InsightsScreen() {
       </View>
 
       <View style={styles.timeframeSelector}>
-        {(['week', 'month', 'all'] as const).map((option) => (
+        {(['daily', 'weekly', 'monthly', 'all'] as const).map((option) => (
           <Pressable
             key={option}
             style={[
@@ -52,7 +98,7 @@ export default function InsightsScreen() {
                 timeframe === option && styles.timeframeTextActive,
               ]}
             >
-              {option === 'week' ? 'This Week' : option === 'month' ? 'This Month' : 'All Time'}
+              {option.charAt(0).toUpperCase() + option.slice(1)}
             </Text>
           </Pressable>
         ))}
@@ -105,26 +151,54 @@ export default function InsightsScreen() {
       </View>
 
       <View style={styles.historySection}>
-        <Text style={styles.sectionTitle}>Recent Check-Ins</Text>
-        {SAMPLE_HISTORY.map((purchase) => (
-          <View key={purchase.id} style={styles.historyItem}>
-            <View style={styles.historyLeft}>
-              <Text style={styles.historyEmoji}>
-                {purchase.type === 'emotional' ? '💭' : '🧠'}
-              </Text>
-              <View style={styles.historyInfo}>
-                <Text style={styles.historyItem}>{purchase.item}</Text>
-                <Text style={styles.historyDate}>{purchase.date}</Text>
+        <Text style={styles.sectionTitle}>Purchase Timeline</Text>
+        <View style={styles.timeline}>
+          {filteredPurchases.map((purchase, index) => (
+            <View key={purchase.id} style={styles.timelineItem}>
+              {index < filteredPurchases.length - 1 && <View style={styles.timelineLine} />}
+              <View
+                style={[
+                  styles.timelineDot,
+                  { backgroundColor: purchase.type === 'rational' ? '#FFD700' : '#ff8844' },
+                ]}
+              />
+              <View
+                style={[
+                  styles.purchaseCard,
+                  purchase.type === 'rational' ? styles.purchaseCardRational : styles.purchaseCardEmotional,
+                ]}
+              >
+                <View style={styles.purchaseHeader}>
+                  <View style={styles.purchaseHeaderLeft}>
+                    <Text style={styles.purchaseEmoji}>
+                      {purchase.type === 'emotional' ? '💭' : '🧠'}
+                    </Text>
+                    <View>
+                      <Text style={styles.purchaseDate}>{purchase.date}</Text>
+                      <Text style={styles.purchaseTime}>{purchase.time}</Text>
+                    </View>
+                  </View>
+                  <Text style={[
+                    styles.purchaseAmount,
+                    purchase.type === 'emotional' ? styles.emotionalColor : styles.rationalColor
+                  ]}>
+                    ${purchase.amount}
+                  </Text>
+                </View>
+                
+                <Text style={styles.purchaseItem}>{purchase.item}</Text>
+                <Text style={styles.purchaseReason}>{purchase.reason}</Text>
+                
+                <View style={styles.purchaseFooter}>
+                  <Text style={styles.purchaseMood}>Mood: {purchase.mood}</Text>
+                  <Text style={styles.purchaseType}>
+                    {purchase.type === 'emotional' ? 'Emotional' : 'Rational'}
+                  </Text>
+                </View>
               </View>
             </View>
-            <Text style={[
-              styles.historyAmount,
-              purchase.type === 'emotional' ? styles.emotionalColor : styles.rationalColor
-            ]}>
-              ${purchase.amount}
-            </Text>
-          </View>
-        ))}
+          ))}
+        </View>
       </View>
 
       <View style={styles.encouragementBox}>
@@ -169,12 +243,12 @@ const styles = StyleSheet.create({
   },
   timeframeSelector: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
     marginBottom: 24,
   },
   timeframeButton: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 10,
     backgroundColor: '#111',
     borderWidth: 2,
     borderColor: '#333',
@@ -187,8 +261,8 @@ const styles = StyleSheet.create({
   },
   timeframeText: {
     color: '#888',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     fontFamily: 'System',
   },
   timeframeTextActive: {
@@ -284,42 +358,108 @@ const styles = StyleSheet.create({
   historySection: {
     marginBottom: 28,
   },
-  historyItem: {
+  timeline: {
+    position: 'relative',
+  },
+  timelineItem: {
+    position: 'relative',
+    marginBottom: 20,
+    paddingLeft: 32,
+  },
+  timelineLine: {
+    position: 'absolute',
+    left: 7,
+    top: 16,
+    bottom: -20,
+    width: 2,
+    backgroundColor: '#333',
+  },
+  timelineDot: {
+    position: 'absolute',
+    left: 0,
+    top: 16,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 3,
+    borderColor: '#000',
+  },
+  purchaseCard: {
+    borderRadius: 14,
+    padding: 18,
+    borderWidth: 2,
+  },
+  purchaseCardRational: {
+    backgroundColor: '#0a0a0a',
+    borderColor: '#FFD700',
+  },
+  purchaseCardEmotional: {
+    backgroundColor: '#0a0a0a',
+    borderColor: '#ff8844',
+  },
+  purchaseHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#111',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 10,
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
-  historyLeft: {
+  purchaseHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
+    gap: 12,
   },
-  historyEmoji: {
+  purchaseEmoji: {
     fontSize: 28,
-    marginRight: 14,
   },
-  historyInfo: {
-    flex: 1,
-  },
-  historyItemText: {
-    fontSize: 15,
-    fontWeight: '600',
+  purchaseDate: {
+    fontSize: 14,
+    fontWeight: '700',
     color: '#fff',
-    marginBottom: 4,
     fontFamily: 'System',
   },
-  historyDate: {
-    fontSize: 13,
+  purchaseTime: {
+    fontSize: 12,
     color: '#666',
     fontFamily: 'System',
   },
-  historyAmount: {
+  purchaseAmount: {
+    fontSize: 20,
+    fontWeight: '900',
+    fontFamily: 'System',
+  },
+  purchaseItem: {
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 6,
+    fontFamily: 'System',
+  },
+  purchaseReason: {
+    fontSize: 14,
+    color: '#aaa',
+    marginBottom: 14,
+    fontStyle: 'italic',
+    fontFamily: 'System',
+  },
+  purchaseFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#222',
+  },
+  purchaseMood: {
+    fontSize: 13,
+    color: '#888',
+    fontFamily: 'System',
+  },
+  purchaseType: {
+    fontSize: 11,
+    color: '#666',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    fontWeight: '700',
     fontFamily: 'System',
   },
   encouragementBox: {

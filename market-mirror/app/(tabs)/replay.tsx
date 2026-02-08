@@ -1,8 +1,20 @@
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import React from 'react';
 import { useState, useEffect } from 'react';
 import { snowflake } from '@/lib/snowflake-client';
 import { analyzeTraderBehavior } from '@/lib/behavior-analyzer';
 import { Trade } from '@/lib/types';
+
+
+type Trade = {
+  time: string;
+  action: 'BUY' | 'SELL';
+  reason: string;
+  profit: number;
+  type: 'Emotional' | 'Rational';
+  ticker: string;
+};
+
 
 const TRADES: Trade[] = [
   { time: '09:31', action: 'BUY', ticker: 'AAPL', reason: 'FOMO - saw it trending', profit: -120, type: 'Emotional' },

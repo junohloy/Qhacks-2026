@@ -1,5 +1,7 @@
 import { Tabs } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
+import React from 'react';
+
 
 function TabIcon({ name, focused }: { name: string; focused: boolean }) {
   return (
@@ -31,14 +33,7 @@ export default function TabLayout() {
         name="insights"
         options={{
           title: 'Insights',
-          tabBarIcon: ({ focused }) => <TabIcon name="💡" focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="mood"
-        options={{
-          title: 'Mood',
-          tabBarIcon: ({ focused }) => <TabIcon name="😊" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon name="📊" focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -46,6 +41,13 @@ export default function TabLayout() {
         options={{
           title: 'Community',
           tabBarIcon: ({ focused }) => <TabIcon name="👥" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ focused }) => <TabIcon name="⚙️" focused={focused} />,
         }}
       />
     </Tabs>
