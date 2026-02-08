@@ -81,6 +81,8 @@ export default function HomeScreen() {
   const [textDescription, setTextDescription] = useState('');
   const [textInput, setTextInput] = useState('');
   const [inputMethod, setInputMethod] = useState<'photo' | 'text' | null>(null);
+  const [identifiedProduct, setIdentifiedProduct] = useState<string | null>(null);
+  const [isIdentifyingProduct, setIsIdentifyingProduct] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [result, setResult] = useState<{ 
     type: 'emotional' | 'rational'; 
@@ -110,6 +112,50 @@ export default function HomeScreen() {
     return status === 'granted';
   };
 
+  const analyzePhoto = async (uri: string) => {
+    setIsIdentifyingProduct(true);
+    try {
+      // Convert image to base64
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          const base64String = result.split(',')[1];
+          resolve(base64String);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      // Use Gemini Vision to analyze the photo
+      const visionModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      
+      const imageParts = [
+        {
+          inlineData: {
+            data: base64,
+            mimeType: "image/jpeg"
+          }
+        }
+      ];
+
+      const visionPrompt = "Analyze this image and identify the product. Provide the brand name and product name/description in a concise format like: 'Brand - Product Description'. If you can't identify the exact product, describe what you see in detail.";
+
+      const visionResult = await visionModel.generateContent([visionPrompt, ...imageParts]);
+      const visionResponse = await visionResult.response;
+      const productIdentification = visionResponse.text().trim();
+      
+      setIdentifiedProduct(productIdentification);
+    } catch (error) {
+      console.error('Error identifying product from photo:', error);
+      setIdentifiedProduct("Unable to identify product - please continue anyway");
+    } finally {
+      setIsIdentifyingProduct(false);
+    }
+  };
+
   const takePhoto = async () => {
     const hasPermission = await requestCameraPermission();
     if (!hasPermission) {
@@ -127,6 +173,7 @@ export default function HomeScreen() {
     if (!result.canceled && result.assets[0]) {
       setPhotoUri(result.assets[0].uri);
       setInputMethod('photo');
+      await analyzePhoto(result.assets[0].uri);
     }
   };
 
@@ -147,12 +194,13 @@ export default function HomeScreen() {
     if (!result.canceled && result.assets[0]) {
       setPhotoUri(result.assets[0].uri);
       setInputMethod('photo');
+      await analyzePhoto(result.assets[0].uri);
     }
   };
 
   const handlePhotoOrTextSubmit = () => {
-    if (inputMethod === 'photo' && photoUri) {
-      handleAnswer(photoUri);
+    if (inputMethod === 'photo' && photoUri && identifiedProduct) {
+      handleAnswer(identifiedProduct); // Use the identified product description
     } else if (inputMethod === 'text' && textDescription.trim()) {
       handleAnswer(textDescription);
     } else {
@@ -175,24 +223,30 @@ export default function HomeScreen() {
   };
 
   const analyzeAnswersWithGemini = async (allAnswers: { [key: number]: string }) => {
-  setIsAnalyzing(true);
+    setIsAnalyzing(true);
 
-  try {
-    // Format the answers into a readable context for Gemini
-    const formattedAnswers = `
-Purchase Item: ${allAnswers[1]}
+    try {
+      const itemDescription = allAnswers[1];
+      const analyzedPhotoUri = inputMethod === 'photo' ? photoUri : null;
+
+      // Format the answers into a readable context for Gemini
+      const formattedAnswers = `
+Purchase Item: ${itemDescription}
 Current Feeling: ${allAnswers[2]}
-Consideration Time: ${allAnswers[3]}
-Need Score (1-10): ${allAnswers[4]}
-Purchase Trigger: ${allAnswers[5]}
+Energy Level: ${allAnswers[3]}
+Stress Level: ${allAnswers[4]}
+Consideration Time: ${allAnswers[5]}
+Need Score (1-10): ${allAnswers[6]}
+Purchase Trigger: ${allAnswers[7]}
+Impulsiveness: ${allAnswers[8]}
 `;
 
-    const prompt = `You are a thoughtful financial advisor analyzing a potential purchase decision. Based on the following user responses, determine if this is an EMOTIONAL purchase or a RATIONAL decision.
+      const prompt = `You are a thoughtful financial advisor analyzing a potential purchase decision. Based on the following user responses, determine if this is an EMOTIONAL purchase or a RATIONAL decision.
 
 ${formattedAnswers}
 
 Analyze these responses considering:
-1. Emotional state and its impact on decision-making
+1. Emotional state (feeling, energy, stress) and its impact on decision-making
 2. Time spent considering the purchase
 3. The actual need vs want
 4. What triggered the purchase desire
@@ -205,29 +259,32 @@ Respond ONLY with a JSON object in this exact format (no markdown, no extra text
   "reasoning": "[brief 1-2 sentence explanation]"
 }`;
 
-    // Use SDK format from Google docs
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    const result = await model.generateContent(prompt);
+      // Use SDK format for text analysis
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const result = await model.generateContent(prompt);
 
-    const geminiResponse = result.response.text();
-    
-    // Parse the JSON response from Gemini
-    const cleanedResponse = geminiResponse.replace(/```json\n?|\n?```/g, '').trim();
-    const analysis = JSON.parse(cleanedResponse);
+      const geminiResponse = result.response.text();
+      
+      // Parse the JSON response from Gemini
+      const cleanedResponse = geminiResponse.replace(/```json\n?|\n?```/g, '').trim();
+      const analysis = JSON.parse(cleanedResponse);
 
-    setResult({
-      type: analysis.type,
-      score: analysis.score,
-    });
-    setShowResult(true);
-  } catch (error) {
-    console.error('Error analyzing with Gemini:', error);
-    // Fallback to original algorithm if API fails
-    analyzeAnswersFallback(allAnswers);
-  } finally {
-    setIsAnalyzing(false);
-  }
-};
+      setResult({
+        type: analysis.type,
+        score: analysis.score,
+        mood: allAnswers[2],
+        photoUri: analyzedPhotoUri,
+        itemDescription: itemDescription
+      });
+      setShowResult(true);
+    } catch (error) {
+      console.error('Error analyzing with Gemini:', error);
+      // Fallback to original algorithm if API fails
+      analyzeAnswersFallback(allAnswers);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   // Fallback function using original algorithm
   const analyzeAnswersFallback = (allAnswers: { [key: number]: string }) => {
@@ -282,6 +339,8 @@ Respond ONLY with a JSON object in this exact format (no markdown, no extra text
     setPhotoUri(null);
     setTextDescription('');
     setInputMethod(null);
+    setIdentifiedProduct(null);
+    setIsIdentifyingProduct(false);
   };
 
   const openShareModal = () => {
@@ -518,14 +577,35 @@ Respond ONLY with a JSON object in this exact format (no markdown, no extra text
                 {photoUri ? (
                   <View style={styles.photoPreviewContainer}>
                     <Image source={{ uri: photoUri }} style={styles.photoPreview} />
+                    
+                    {isIdentifyingProduct && (
+                      <View style={styles.identifyingContainer}>
+                        <Text style={styles.identifyingText}>🔍 Identifying product...</Text>
+                      </View>
+                    )}
+                    
+                    {identifiedProduct && (
+                      <View style={styles.identifiedProductBox}>
+                        <Text style={styles.identifiedLabel}>✓ Identified Product:</Text>
+                        <Text style={styles.identifiedProduct}>{identifiedProduct}</Text>
+                      </View>
+                    )}
+                    
                     <Pressable style={styles.retakeButton} onPress={() => {
                       setPhotoUri(null);
                       setInputMethod(null);
+                      setIdentifiedProduct(null);
                     }}>
                       <Text style={styles.retakeButtonText}>Choose Different Method</Text>
                     </Pressable>
-                    <Pressable style={styles.submitButton} onPress={handlePhotoOrTextSubmit}>
-                      <Text style={styles.submitButtonText}>Continue</Text>
+                    <Pressable 
+                      style={[styles.submitButton, (!identifiedProduct || isIdentifyingProduct) && styles.submitButtonDisabled]} 
+                      onPress={handlePhotoOrTextSubmit}
+                      disabled={!identifiedProduct || isIdentifyingProduct}
+                    >
+                      <Text style={styles.submitButtonText}>
+                        {isIdentifyingProduct ? 'Analyzing...' : 'Continue'}
+                      </Text>
                     </Pressable>
                   </View>
                 ) : (
@@ -792,6 +872,41 @@ const styles = StyleSheet.create({
     height: 300,
     borderRadius: 12,
     backgroundColor: '#111',
+  },
+  identifyingContainer: {
+    backgroundColor: '#111',
+    borderWidth: 2,
+    borderColor: '#FFD700',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  identifyingText: {
+    fontSize: 16,
+    color: '#FFD700',
+    fontWeight: '600',
+    fontFamily: 'System',
+  },
+  identifiedProductBox: {
+    backgroundColor: '#0a0a0a',
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    borderRadius: 12,
+    padding: 16,
+  },
+  identifiedLabel: {
+    fontSize: 13,
+    color: '#4CAF50',
+    fontWeight: '600',
+    marginBottom: 6,
+    fontFamily: 'System',
+  },
+  identifiedProduct: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '600',
+    lineHeight: 22,
+    fontFamily: 'System',
   },
   retakeButton: {
     backgroundColor: '#111',
