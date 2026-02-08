@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Modal, Image } from 'react-native';
 import { useState, useEffect } from 'react';
 import { getCommunityPosts } from './index';
+import React from 'react';
 
 type Comment = {
   id: number;
@@ -9,6 +10,7 @@ type Comment = {
   text: string;
   timeAgo: string;
 };
+
 
 type Post = {
   id: number;

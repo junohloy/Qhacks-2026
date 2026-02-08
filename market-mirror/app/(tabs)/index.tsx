@@ -1,6 +1,11 @@
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Animated, Modal, Image } from 'react-native';
 import { useState, useRef, useEffect } from 'react';
 import * as ImagePicker from 'expo-image-picker';
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import React from 'react';
+
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY ? GEMINI_API_KEY.toString() : "");
 
 type Question = {
   id: number;
@@ -74,7 +79,10 @@ export default function HomeScreen() {
   const [answers, setAnswers] = useState<{ [key: number]: string }>({});
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [textDescription, setTextDescription] = useState('');
+  const [textInput, setTextInput] = useState('');
   const [inputMethod, setInputMethod] = useState<'photo' | 'text' | null>(null);
+  const [identifiedProduct, setIdentifiedProduct] = useState<string | null>(null);
+  const [isIdentifyingProduct, setIsIdentifyingProduct] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [result, setResult] = useState<{ 
     type: 'emotional' | 'rational'; 
@@ -88,6 +96,7 @@ export default function HomeScreen() {
   const [sharePrice, setSharePrice] = useState('');
   const [shareItemName, setShareItemName] = useState('');
 
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -102,6 +111,60 @@ export default function HomeScreen() {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     return status === 'granted';
   };
+
+  const analyzePhoto = async (uri: string) => {
+  setIsIdentifyingProduct(true);
+  try {
+    // Convert image to base64
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        const base64String = result.split(',')[1];
+        resolve(base64String);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    // Use Gemini Vision to analyze the photo
+    const visionModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    
+    const imageParts = [
+      {
+        inlineData: {
+          data: base64,
+          mimeType: "image/jpeg"
+        }
+      }
+    ];
+
+    const visionPrompt = `Analyze this image and identify the product. Provide your response in this exact JSON format (no markdown, no extra text):
+{
+  "productName": "Brand - Product Description",
+  "priceCAD": "approximate price in CAD or null if unknown"
+}
+
+Be specific about the brand and product. For the price, provide your best estimate of the typical retail price in Canadian dollars (CAD). If you cannot determine the price, set it to null.`;
+
+    const visionResult = await visionModel.generateContent([visionPrompt, ...imageParts]);
+    const visionResponse = await visionResult.response;
+    const responseText = visionResponse.text().trim();
+    
+    // Parse JSON response
+    const cleanedResponse = responseText.replace(/```json\n?|\n?```/g, '').trim();
+    const productData = JSON.parse(cleanedResponse);
+    
+    setIdentifiedProduct(JSON.stringify(productData));
+  } catch (error) {
+    console.error('Error identifying product from photo:', error);
+    setIdentifiedProduct(JSON.stringify({ productName: "Unable to identify product - please continue anyway", priceCAD: null }));
+  } finally {
+    setIsIdentifyingProduct(false);
+  }
+};
 
   const takePhoto = async () => {
     const hasPermission = await requestCameraPermission();
@@ -120,6 +183,7 @@ export default function HomeScreen() {
     if (!result.canceled && result.assets[0]) {
       setPhotoUri(result.assets[0].uri);
       setInputMethod('photo');
+      await analyzePhoto(result.assets[0].uri);
     }
   };
 
@@ -140,12 +204,13 @@ export default function HomeScreen() {
     if (!result.canceled && result.assets[0]) {
       setPhotoUri(result.assets[0].uri);
       setInputMethod('photo');
+      await analyzePhoto(result.assets[0].uri);
     }
   };
 
   const handlePhotoOrTextSubmit = () => {
-    if (inputMethod === 'photo' && photoUri) {
-      handleAnswer(photoUri);
+    if (inputMethod === 'photo' && photoUri && identifiedProduct) {
+      handleAnswer(identifiedProduct); // Use the identified product description
     } else if (inputMethod === 'text' && textDescription.trim()) {
       handleAnswer(textDescription);
     } else {
@@ -163,11 +228,76 @@ export default function HomeScreen() {
         setCurrentQuestion(currentQuestion + 1);
       }, 200);
     } else {
-      analyzeAnswers(newAnswers);
+      analyzeAnswersWithGemini(newAnswers);
     }
   };
 
-  const analyzeAnswers = (allAnswers: { [key: number]: string }) => {
+  const analyzeAnswersWithGemini = async (allAnswers: { [key: number]: string }) => {
+    setIsAnalyzing(true);
+
+    try {
+      const itemDescription = allAnswers[1];
+      const analyzedPhotoUri = inputMethod === 'photo' ? photoUri : null;
+
+      // Format the answers into a readable context for Gemini
+      const formattedAnswers = `
+Purchase Item: ${itemDescription}
+Current Feeling: ${allAnswers[2]}
+Energy Level: ${allAnswers[3]}
+Stress Level: ${allAnswers[4]}
+Consideration Time: ${allAnswers[5]}
+Need Score (1-10): ${allAnswers[6]}
+Purchase Trigger: ${allAnswers[7]}
+Impulsiveness: ${allAnswers[8]}
+`;
+
+      const prompt = `You are a thoughtful financial advisor analyzing a potential purchase decision. Based on the following user responses, determine if this is an EMOTIONAL purchase or a RATIONAL decision.
+
+${formattedAnswers}
+
+Analyze these responses considering:
+1. Emotional state (feeling, energy, stress) and its impact on decision-making
+2. Time spent considering the purchase
+3. The actual need vs want
+4. What triggered the purchase desire
+5. Overall impulsivity signals
+
+Respond ONLY with a JSON object in this exact format (no markdown, no extra text):
+{
+  "type": "emotional" or "rational",
+  "score": [number from 0-10, where 10 is most emotional],
+  "reasoning": "[brief 1-2 sentence explanation]"
+}`;
+
+      // Use SDK format for text analysis
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const result = await model.generateContent(prompt);
+
+      const geminiResponse = result.response.text();
+      
+      // Parse the JSON response from Gemini
+      const cleanedResponse = geminiResponse.replace(/```json\n?|\n?```/g, '').trim();
+      const analysis = JSON.parse(cleanedResponse);
+
+      setResult({
+        type: analysis.type,
+        score: analysis.score,
+        mood: allAnswers[2],
+        photoUri: analyzedPhotoUri,
+        itemDescription: itemDescription
+      });
+      setShowResult(true);
+    } catch (error) {
+      console.error('Error analyzing with Gemini:', error);
+      // Fallback to original algorithm if API fails
+      analyzeAnswersFallback(allAnswers);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // Fallback function using original algorithm
+  const analyzeAnswersFallback = (allAnswers: { [key: number]: string }) => {
     let emotionalScore = 0;
 
     if (allAnswers[2] === 'Excited' || allAnswers[2] === 'Anxious' || allAnswers[2] === 'Impulsive') {
@@ -219,14 +349,31 @@ export default function HomeScreen() {
     setPhotoUri(null);
     setTextDescription('');
     setInputMethod(null);
+    setIdentifiedProduct(null);
+    setIsIdentifyingProduct(false);
   };
 
   const openShareModal = () => {
-    setShareQuestion('');
-    setSharePrice('');
+  setShareQuestion('');
+  
+  // Pre-fill item name and price if we have identified product data
+  if (result?.itemDescription) {
+    try {
+      const productData = JSON.parse(result.itemDescription);
+      setShareItemName(productData.productName || '');
+      setSharePrice(productData.priceCAD || '');
+    } catch {
+      // If it's not JSON (text input), use as-is
+      setShareItemName(result.itemDescription);
+      setSharePrice('');
+    }
+  } else {
     setShareItemName('');
-    setShowShareModal(true);
-  };
+    setSharePrice('');
+  }
+  
+  setShowShareModal(true);
+};
 
   const shareWithCommunity = () => {
     if (!shareQuestion.trim() || !sharePrice.trim() || !shareItemName.trim() || !result) return;
@@ -252,6 +399,16 @@ export default function HomeScreen() {
     alert('Posted to community! Check the Community tab to see your post.');
   };
 
+  if (isAnalyzing) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={styles.loadingEmoji}>🤔</Text>
+        <Text style={styles.loadingText}>Analyzing your responses...</Text>
+        <Text style={styles.loadingSubtext}>Using AI to understand your decision</Text>
+      </View>
+    );
+  }
+
   if (showResult && result) {
     return (
       <ScrollView contentContainerStyle={styles.container}>
@@ -269,11 +426,33 @@ export default function HomeScreen() {
           )}
           
           {result.itemDescription && !result.photoUri && (
-            <View style={styles.descriptionBox}>
-              <Text style={styles.descriptionTitle}>What you're considering:</Text>
-              <Text style={styles.descriptionText}>{result.itemDescription}</Text>
-            </View>
-          )}
+  <View style={styles.descriptionBox}>
+    <Text style={styles.descriptionTitle}>What you're considering:</Text>
+    <Text style={styles.descriptionText}>
+      {(() => {
+        try {
+          const productData = JSON.parse(result.itemDescription);
+          return productData.productName;
+        } catch {
+          return result.itemDescription;
+        }
+      })()}
+    </Text>
+    {(() => {
+      try {
+        const productData = JSON.parse(result.itemDescription);
+        if (productData.priceCAD) {
+          return (
+            <Text style={styles.descriptionPrice}>
+              Est. Price: ${productData.priceCAD} CAD
+            </Text>
+          );
+        }
+      } catch {}
+      return null;
+    })()}
+  </View>
+)}
           
           {result.type === 'emotional' ? (
             <View style={styles.messageBox}>
@@ -445,14 +624,42 @@ export default function HomeScreen() {
                 {photoUri ? (
                   <View style={styles.photoPreviewContainer}>
                     <Image source={{ uri: photoUri }} style={styles.photoPreview} />
+                    
+                    {isIdentifyingProduct && (
+                      <View style={styles.identifyingContainer}>
+                        <Text style={styles.identifyingText}>🔍 Identifying product...</Text>
+                      </View>
+                    )}
+                    
+                    {identifiedProduct && (
+  <View style={styles.identifiedProductBox}>
+    <Text style={styles.identifiedLabel}>✓ Identified Product:</Text>
+    <Text style={styles.identifiedProduct}>
+      {JSON.parse(identifiedProduct).productName}
+    </Text>
+    {JSON.parse(identifiedProduct).priceCAD && (
+      <Text style={styles.identifiedPrice}>
+        Est. Price: ${JSON.parse(identifiedProduct).priceCAD} CAD
+      </Text>
+    )}
+  </View>
+)}
+                    
                     <Pressable style={styles.retakeButton} onPress={() => {
                       setPhotoUri(null);
                       setInputMethod(null);
+                      setIdentifiedProduct(null);
                     }}>
                       <Text style={styles.retakeButtonText}>Choose Different Method</Text>
                     </Pressable>
-                    <Pressable style={styles.submitButton} onPress={handlePhotoOrTextSubmit}>
-                      <Text style={styles.submitButtonText}>Continue</Text>
+                    <Pressable 
+                      style={[styles.submitButton, (!identifiedProduct || isIdentifyingProduct) && styles.submitButtonDisabled]} 
+                      onPress={handlePhotoOrTextSubmit}
+                      disabled={!identifiedProduct || isIdentifyingProduct}
+                    >
+                      <Text style={styles.submitButtonText}>
+                        {isIdentifyingProduct ? 'Analyzing...' : 'Continue'}
+                      </Text>
                     </Pressable>
                   </View>
                 ) : (
@@ -720,6 +927,41 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#111',
   },
+  identifyingContainer: {
+    backgroundColor: '#111',
+    borderWidth: 2,
+    borderColor: '#FFD700',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  identifyingText: {
+    fontSize: 16,
+    color: '#FFD700',
+    fontWeight: '600',
+    fontFamily: 'System',
+  },
+  identifiedProductBox: {
+    backgroundColor: '#0a0a0a',
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    borderRadius: 12,
+    padding: 16,
+  },
+  identifiedLabel: {
+    fontSize: 13,
+    color: '#4CAF50',
+    fontWeight: '600',
+    marginBottom: 6,
+    fontFamily: 'System',
+  },
+  identifiedProduct: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '600',
+    lineHeight: 22,
+    fontFamily: 'System',
+  },
   retakeButton: {
     backgroundColor: '#111',
     borderWidth: 2,
@@ -816,6 +1058,22 @@ const styles = StyleSheet.create({
   backButtonText: {
     color: '#888',
     fontSize: 15,
+    fontFamily: 'System',
+  },
+  loadingEmoji: {
+    fontSize: 80,
+    marginBottom: 20,
+  },
+  loadingText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#FFD700',
+    marginBottom: 8,
+    fontFamily: 'System',
+  },
+  loadingSubtext: {
+    fontSize: 14,
+    color: '#888',
     fontFamily: 'System',
   },
   resultContainer: {
@@ -1053,4 +1311,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: 'System',
   },
+  identifiedPrice: {
+  fontSize: 14,
+  color: '#4CAF50',
+  fontWeight: '600',
+  marginTop: 8,
+  fontFamily: 'System',
+},
+descriptionPrice: {
+  fontSize: 14,
+  color: '#FFD700',
+  fontWeight: '600',
+  marginTop: 8,
+  fontFamily: 'System',
+},
 });
