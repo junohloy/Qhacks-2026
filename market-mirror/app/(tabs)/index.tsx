@@ -1,5 +1,10 @@
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Animated } from 'react-native';
 import { useState, useRef, useEffect } from 'react';
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import React from 'react';
+
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY ? GEMINI_API_KEY.toString() : "");
 
 type Question = {
   id: number;
@@ -45,6 +50,7 @@ export default function HomeScreen() {
   const [textInput, setTextInput] = useState('');
   const [showResult, setShowResult] = useState(false);
   const [result, setResult] = useState<{ type: 'emotional' | 'rational'; score: number } | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -65,7 +71,7 @@ export default function HomeScreen() {
         setCurrentQuestion(currentQuestion + 1);
       }, 200);
     } else {
-      analyzeAnswers(newAnswers);
+      analyzeAnswersWithGemini(newAnswers);
     }
   };
 
@@ -76,7 +82,63 @@ export default function HomeScreen() {
     }
   };
 
-  const analyzeAnswers = (allAnswers: { [key: number]: string }) => {
+  const analyzeAnswersWithGemini = async (allAnswers: { [key: number]: string }) => {
+  setIsAnalyzing(true);
+
+  try {
+    // Format the answers into a readable context for Gemini
+    const formattedAnswers = `
+Purchase Item: ${allAnswers[1]}
+Current Feeling: ${allAnswers[2]}
+Consideration Time: ${allAnswers[3]}
+Need Score (1-10): ${allAnswers[4]}
+Purchase Trigger: ${allAnswers[5]}
+`;
+
+    const prompt = `You are a thoughtful financial advisor analyzing a potential purchase decision. Based on the following user responses, determine if this is an EMOTIONAL purchase or a RATIONAL decision.
+
+${formattedAnswers}
+
+Analyze these responses considering:
+1. Emotional state and its impact on decision-making
+2. Time spent considering the purchase
+3. The actual need vs want
+4. What triggered the purchase desire
+5. Overall impulsivity signals
+
+Respond ONLY with a JSON object in this exact format (no markdown, no extra text):
+{
+  "type": "emotional" or "rational",
+  "score": [number from 0-10, where 10 is most emotional],
+  "reasoning": "[brief 1-2 sentence explanation]"
+}`;
+
+    // Use SDK format from Google docs
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const result = await model.generateContent(prompt);
+
+    const geminiResponse = result.response.text();
+    
+    // Parse the JSON response from Gemini
+    const cleanedResponse = geminiResponse.replace(/```json\n?|\n?```/g, '').trim();
+    const analysis = JSON.parse(cleanedResponse);
+
+    setResult({
+      type: analysis.type,
+      score: analysis.score,
+    });
+    setShowResult(true);
+  } catch (error) {
+    console.error('Error analyzing with Gemini:', error);
+    // Fallback to original algorithm if API fails
+    analyzeAnswersFallback(allAnswers);
+  } finally {
+    setIsAnalyzing(false);
+  }
+};
+
+  // Fallback function using original algorithm
+  const analyzeAnswersFallback = (allAnswers: { [key: number]: string }) => {
     let emotionalScore = 0;
 
     if (allAnswers[2] === 'Excited' || allAnswers[2] === 'Anxious' || allAnswers[2] === 'Impulsive') {
@@ -106,6 +168,16 @@ export default function HomeScreen() {
     setResult(null);
     setTextInput('');
   };
+
+  if (isAnalyzing) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={styles.loadingEmoji}>🤔</Text>
+        <Text style={styles.loadingText}>Analyzing your responses...</Text>
+        <Text style={styles.loadingSubtext}>Using AI to understand your decision</Text>
+      </View>
+    );
+  }
 
   if (showResult && result) {
     return (
@@ -422,6 +494,22 @@ const styles = StyleSheet.create({
   backButtonText: {
     color: '#888',
     fontSize: 15,
+    fontFamily: 'System',
+  },
+  loadingEmoji: {
+    fontSize: 80,
+    marginBottom: 20,
+  },
+  loadingText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#FFD700',
+    marginBottom: 8,
+    fontFamily: 'System',
+  },
+  loadingSubtext: {
+    fontSize: 14,
+    color: '#888',
     fontFamily: 'System',
   },
   resultContainer: {

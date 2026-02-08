@@ -1,5 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput } from 'react-native';
 import { useState } from 'react';
+import React from 'react';
+
 
 type Post = {
   id: number;
