@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Pla
 import { useState } from 'react';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import React from 'react';
 
 export default function LandingScreen() {
   const [isLogin, setIsLogin] = useState(true);
