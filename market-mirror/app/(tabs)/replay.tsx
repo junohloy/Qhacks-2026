@@ -1,14 +1,8 @@
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { useState } from 'react';
-
-type Trade = {
-  time: string;
-  action: 'BUY' | 'SELL';
-  reason: string;
-  profit: number;
-  type: 'Emotional' | 'Rational';
-  ticker: string;
-};
+import { useState, useEffect } from 'react';
+import { snowflake } from '@/lib/snowflake-client';
+import { analyzeTraderBehavior } from '@/lib/behavior-analyzer';
+import { Trade } from '@/lib/types';
 
 const TRADES: Trade[] = [
   { time: '09:31', action: 'BUY', ticker: 'AAPL', reason: 'FOMO - saw it trending', profit: -120, type: 'Emotional' },
@@ -23,6 +17,41 @@ const TRADES: Trade[] = [
 
 export default function ReplayScreen() {
   const [filter, setFilter] = useState<'All' | 'Emotional' | 'Rational'>('All');
+  const [savedToSnowflake, setSavedToSnowflake] = useState(false);
+
+  useEffect(() => {
+    // Save session to Snowflake when component mounts
+    saveSessionToSnowflake();
+  }, []);
+
+  const saveSessionToSnowflake = async () => {
+    const analysis = analyzeTraderBehavior(TRADES);
+    
+    const snapshot = {
+      session_id: `session_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      emotional_self_score: analysis.emotionalScore,
+      rational_self_score: analysis.rationalScore,
+      discipline_delta: analysis.rationalScore - analysis.emotionalScore,
+      dominant_bias: analysis.dominantBias,
+      trade_count_emotional: analysis.emotionalTrades.length,
+      trade_count_rational: analysis.rationalTrades.length,
+      market_condition: analysis.marketCondition,
+      session_duration_minutes: analysis.durationMinutes,
+      notes: analysis.summary
+    };
+
+    const userId = 'demo-user-123';
+    
+    try {
+      const result = await snowflake.insertSnapshot(userId, snapshot);
+      if (result.success) {
+        setSavedToSnowflake(true);
+      }
+    } catch (error) {
+      console.error('Error saving session:', error);
+    }
+  };
 
   const filteredTrades = TRADES.filter(trade => 
     filter === 'All' ? true : trade.type === filter
@@ -40,6 +69,11 @@ export default function ReplayScreen() {
           <Text style={styles.title}>Trade Replay</Text>
           <View style={styles.dividerGold} />
           <Text style={styles.subtitle}>Your day, broken down by decision quality</Text>
+          {savedToSnowflake && (
+            <View style={styles.savedBadge}>
+              <Text style={styles.savedText}>✅ Saved to Behavioral Memory</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.summary}>
@@ -153,6 +187,20 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 15,
     color: '#888',
+  },
+  savedBadge: {
+    marginTop: 12,
+    backgroundColor: '#FFD70020',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#FFD700',
+  },
+  savedText: {
+    color: '#FFD700',
+    fontSize: 12,
+    fontWeight: '600',
   },
   summary: {
     flexDirection: 'row',
