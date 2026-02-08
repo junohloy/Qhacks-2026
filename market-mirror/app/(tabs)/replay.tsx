@@ -3,17 +3,7 @@ import React from 'react';
 import { useState, useEffect } from 'react';
 import { snowflake } from '@/lib/snowflake-client';
 import { analyzeTraderBehavior } from '@/lib/behavior-analyzer';
-import { Trade } from '@/lib/types';
-
-
-type Trade = {
-  time: string;
-  action: 'BUY' | 'SELL';
-  reason: string;
-  profit: number;
-  type: 'Emotional' | 'Rational';
-  ticker: string;
-};
+import { Trade } from '@/lib/type';
 
 
 const TRADES: Trade[] = [
