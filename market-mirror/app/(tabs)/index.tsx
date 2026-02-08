@@ -113,48 +113,58 @@ export default function HomeScreen() {
   };
 
   const analyzePhoto = async (uri: string) => {
-    setIsIdentifyingProduct(true);
-    try {
-      // Convert image to base64
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const result = reader.result as string;
-          const base64String = result.split(',')[1];
-          resolve(base64String);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
+  setIsIdentifyingProduct(true);
+  try {
+    // Convert image to base64
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        const base64String = result.split(',')[1];
+        resolve(base64String);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
 
-      // Use Gemini Vision to analyze the photo
-      const visionModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      
-      const imageParts = [
-        {
-          inlineData: {
-            data: base64,
-            mimeType: "image/jpeg"
-          }
+    // Use Gemini Vision to analyze the photo
+    const visionModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    
+    const imageParts = [
+      {
+        inlineData: {
+          data: base64,
+          mimeType: "image/jpeg"
         }
-      ];
+      }
+    ];
 
-      const visionPrompt = "Analyze this image and identify the product. Provide the brand name and product name/description in a concise format like: 'Brand - Product Description'. If you can't identify the exact product, describe what you see in detail.";
+    const visionPrompt = `Analyze this image and identify the product. Provide your response in this exact JSON format (no markdown, no extra text):
+{
+  "productName": "Brand - Product Description",
+  "priceCAD": "approximate price in CAD or null if unknown"
+}
 
-      const visionResult = await visionModel.generateContent([visionPrompt, ...imageParts]);
-      const visionResponse = await visionResult.response;
-      const productIdentification = visionResponse.text().trim();
-      
-      setIdentifiedProduct(productIdentification);
-    } catch (error) {
-      console.error('Error identifying product from photo:', error);
-      setIdentifiedProduct("Unable to identify product - please continue anyway");
-    } finally {
-      setIsIdentifyingProduct(false);
-    }
-  };
+Be specific about the brand and product. For the price, provide your best estimate of the typical retail price in Canadian dollars (CAD). If you cannot determine the price, set it to null.`;
+
+    const visionResult = await visionModel.generateContent([visionPrompt, ...imageParts]);
+    const visionResponse = await visionResult.response;
+    const responseText = visionResponse.text().trim();
+    
+    // Parse JSON response
+    const cleanedResponse = responseText.replace(/```json\n?|\n?```/g, '').trim();
+    const productData = JSON.parse(cleanedResponse);
+    
+    setIdentifiedProduct(JSON.stringify(productData));
+  } catch (error) {
+    console.error('Error identifying product from photo:', error);
+    setIdentifiedProduct(JSON.stringify({ productName: "Unable to identify product - please continue anyway", priceCAD: null }));
+  } finally {
+    setIsIdentifyingProduct(false);
+  }
+};
 
   const takePhoto = async () => {
     const hasPermission = await requestCameraPermission();
@@ -344,11 +354,26 @@ Respond ONLY with a JSON object in this exact format (no markdown, no extra text
   };
 
   const openShareModal = () => {
-    setShareQuestion('');
-    setSharePrice('');
+  setShareQuestion('');
+  
+  // Pre-fill item name and price if we have identified product data
+  if (result?.itemDescription) {
+    try {
+      const productData = JSON.parse(result.itemDescription);
+      setShareItemName(productData.productName || '');
+      setSharePrice(productData.priceCAD || '');
+    } catch {
+      // If it's not JSON (text input), use as-is
+      setShareItemName(result.itemDescription);
+      setSharePrice('');
+    }
+  } else {
     setShareItemName('');
-    setShowShareModal(true);
-  };
+    setSharePrice('');
+  }
+  
+  setShowShareModal(true);
+};
 
   const shareWithCommunity = () => {
     if (!shareQuestion.trim() || !sharePrice.trim() || !shareItemName.trim() || !result) return;
@@ -401,11 +426,33 @@ Respond ONLY with a JSON object in this exact format (no markdown, no extra text
           )}
           
           {result.itemDescription && !result.photoUri && (
-            <View style={styles.descriptionBox}>
-              <Text style={styles.descriptionTitle}>What you're considering:</Text>
-              <Text style={styles.descriptionText}>{result.itemDescription}</Text>
-            </View>
-          )}
+  <View style={styles.descriptionBox}>
+    <Text style={styles.descriptionTitle}>What you're considering:</Text>
+    <Text style={styles.descriptionText}>
+      {(() => {
+        try {
+          const productData = JSON.parse(result.itemDescription);
+          return productData.productName;
+        } catch {
+          return result.itemDescription;
+        }
+      })()}
+    </Text>
+    {(() => {
+      try {
+        const productData = JSON.parse(result.itemDescription);
+        if (productData.priceCAD) {
+          return (
+            <Text style={styles.descriptionPrice}>
+              Est. Price: ${productData.priceCAD} CAD
+            </Text>
+          );
+        }
+      } catch {}
+      return null;
+    })()}
+  </View>
+)}
           
           {result.type === 'emotional' ? (
             <View style={styles.messageBox}>
@@ -585,11 +632,18 @@ Respond ONLY with a JSON object in this exact format (no markdown, no extra text
                     )}
                     
                     {identifiedProduct && (
-                      <View style={styles.identifiedProductBox}>
-                        <Text style={styles.identifiedLabel}>✓ Identified Product:</Text>
-                        <Text style={styles.identifiedProduct}>{identifiedProduct}</Text>
-                      </View>
-                    )}
+  <View style={styles.identifiedProductBox}>
+    <Text style={styles.identifiedLabel}>✓ Identified Product:</Text>
+    <Text style={styles.identifiedProduct}>
+      {JSON.parse(identifiedProduct).productName}
+    </Text>
+    {JSON.parse(identifiedProduct).priceCAD && (
+      <Text style={styles.identifiedPrice}>
+        Est. Price: ${JSON.parse(identifiedProduct).priceCAD} CAD
+      </Text>
+    )}
+  </View>
+)}
                     
                     <Pressable style={styles.retakeButton} onPress={() => {
                       setPhotoUri(null);
@@ -1257,4 +1311,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: 'System',
   },
+  identifiedPrice: {
+  fontSize: 14,
+  color: '#4CAF50',
+  fontWeight: '600',
+  marginTop: 8,
+  fontFamily: 'System',
+},
+descriptionPrice: {
+  fontSize: 14,
+  color: '#FFD700',
+  fontWeight: '600',
+  marginTop: 8,
+  fontFamily: 'System',
+},
 });
